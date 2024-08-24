@@ -1,0 +1,159 @@
+
+Also refer - https://www.lambdatest.com/learning-hub/iretryanalyzer-in-testng
+
+When you implement a retry mechanism in your test automation framework, it is crucial to correctly update the test results to reflect the retries in your reports. ExtentReports needs to be configured to handle retries properly. If it is showing the test case as passed without indicating the retries, it might be because the retry logic or reporting integration isn't correctly updating the test status.
+
+Here’s a more detailed approach to ensure that retries are properly recorded and reported:
+
+1. Implementing Retry Logic with TestNG
+
+You already have a basic retry logic implemented with IRetryAnalyzer. Ensure it is integrated with your test method using the @Test annotation.
+
+2. Integrate Retry Logic with ExtentReports
+
+Ensure that ExtentReports is updated with each retry attempt. This can be achieved by manually updating the test status in the retry logic.
+
+Example Implementation
+
+RetryAnalyzer Class
+
+Modify the Retry class to log retry attempts in ExtentReports:
+
+javaCopy codeimport org.testng.IRetryAnalyzer;
+import org.testng.ITestResult;
+import com.aventstack.extentreports.Status;
+import com.aventstack.extentreports.ExtentTest;
+ 
+public class Retry implements IRetryAnalyzer {
+    private int count = 0;
+    private static final int maxTry = 1;
+ 
+    @Override
+    public boolean retry(ITestResult result) {
+        if (count < maxTry) {
+            count++;
+            // Log the retry attempt in ExtentReports
+            ExtentTest test = (ExtentTest) result.getAttribute("extentTest");
+            if (test != null) {
+                test.log(Status.INFO, "Retrying test " + result.getName() + " for the " + count + " time.");
+            }
+            return true;
+        }
+        return false;
+    }
+}
+Base Test Class
+
+Ensure that each test result is associated with an ExtentTest instance, and handle retries properly:
+
+javaCopy codeimport org.testng.ITestResult;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Listeners;
+import com.aventstack.extentreports.ExtentReports;
+import com.aventstack.extentreports.ExtentTest;
+import com.aventstack.extentreports.Status;
+ 
+@Listeners({TestListener.class})
+public class BaseTest {
+    protected ExtentReports extent;
+    protected ExtentTest test;
+ 
+    @BeforeMethod
+    public void setUp(ITestResult result) {
+        test = extent.createTest(result.getMethod().getMethodName());
+        result.setAttribute("extentTest", test);
+    }
+ 
+    @AfterMethod
+    public void tearDown(ITestResult result) {
+        if (result.getStatus() == ITestResult.FAILURE) {
+            test.log(Status.FAIL, "Test Failed");
+        } else if (result.getStatus() == ITestResult.SUCCESS) {
+            test.log(Status.PASS, "Test Passed");
+        } else if (result.getStatus() == ITestResult.SKIP) {
+            test.log(Status.SKIP, "Test Skipped");
+        }
+ 
+        extent.flush();
+    }
+}
+Test Listener
+
+Create a TestNG listener to handle retries and update ExtentReports:
+
+javaCopy codeimport org.testng.ITestContext;
+import org.testng.ITestListener;
+import org.testng.ITestResult;
+import com.aventstack.extentreports.ExtentReports;
+import com.aventstack.extentreports.ExtentTest;
+import com.aventstack.extentreports.Status;
+ 
+public class TestListener implements ITestListener {
+    private ExtentReports extent = ExtentManager.createInstance();
+    private ThreadLocal<ExtentTest> test = new ThreadLocal<>();
+ 
+    @Override
+    public void onTestStart(ITestResult result) {
+        ExtentTest extentTest = extent.createTest(result.getMethod().getMethodName());
+        test.set(extentTest);
+        result.setAttribute("extentTest", extentTest);
+    }
+ 
+    @Override
+    public void onTestSuccess(ITestResult result) {
+        test.get().log(Status.PASS, "Test Passed");
+    }
+ 
+    @Override
+    public void onTestFailure(ITestResult result) {
+        test.get().log(Status.FAIL, "Test Failed");
+    }
+ 
+    @Override
+    public void onTestSkipped(ITestResult result) {
+        test.get().log(Status.SKIP, "Test Skipped");
+    }
+ 
+    @Override
+    public void onFinish(ITestContext context) {
+        extent.flush();
+    }
+ 
+    // Other overridden methods can remain empty
+}
+ExtentManager Class
+
+Set up the ExtentManager to handle ExtentReports instance creation:
+
+javaCopy codeimport com.aventstack.extentreports.ExtentReports;
+import com.aventstack.extentreports.reporter.ExtentHtmlReporter;
+ 
+public class ExtentManager {
+    private static ExtentReports extent;
+ 
+    public static ExtentReports createInstance() {
+        ExtentHtmlReporter htmlReporter = new ExtentHtmlReporter("extent.html");
+        extent = new ExtentReports();
+        extent.attachReporter(htmlReporter);
+        return extent;
+    }
+ 
+    public static ExtentReports getInstance() {
+        if (extent == null) {
+            createInstance();
+        }
+        return extent;
+    }
+}
+Summary
+
+Retry Logic: Implement retry logic and ensure it updates the test status in ExtentReports.
+
+Base Test Class: Associate each test result with an ExtentTest instance.
+
+Test Listener: Use a listener to handle test events and log them to ExtentReports.
+
+ExtentManager: Manage the ExtentReports instance.
+
+This setup ensures that retries are properly logged and reported in ExtentReports, providing accurate information about test retries and their outcomes.
